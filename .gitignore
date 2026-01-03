@@ -1,5 +1,13 @@
-embedded.txt
-.DS_Store
-/.release
-/packages
-/public/packages
+.env
+
+# Grocy runtime data
+grocy-config/data/grocy.db
+grocy-config/data/viewcache/
+grocy-config/data/.gitignore
+grocy-config/data/plugins/
+grocy-config/.migrations
+grocy-config/log/
+grocy-config/keys/
+grocy-config/nginx/
+grocy-config/php/
+grocy-config/www/
