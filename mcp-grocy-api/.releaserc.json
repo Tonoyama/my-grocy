@@ -1,0 +1,30 @@
+{
+  "branches": [
+    "main"
+  ],
+  "plugins": [
+    "@semantic-release/commit-analyzer",
+    "@semantic-release/release-notes-generator",
+    [
+      "@semantic-release/npm",
+      {
+        "npmPublish": true,
+        "pkgRoot": "."
+      }
+    ],
+    [
+      "@semantic-release/exec",
+      {
+        "prepareCmd": "echo \"Updating config.yaml with version ${nextRelease.version} using yq\" && yq eval '.version = \"${nextRelease.version}\"' -i config.yaml && echo \"Running scripts/build.js to update generated version files...\" && node scripts/build.js && echo \"Staging changed files...\" && git add config.yaml && git add -f src/version.ts build/version.js"
+      }
+    ],
+    [
+      "@semantic-release/github",
+      {
+        "assets": [],
+        "failComment": false,
+        "failTitle": false
+      }
+    ]
+  ]
+}
