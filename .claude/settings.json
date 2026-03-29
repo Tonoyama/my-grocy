@@ -1,0 +1,37 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo '=== Grocy 自動チェック ===' && docker cp grocy:/config/data/grocy.db /tmp/grocy.db 2>/dev/null && STOCK_COUNT=$(sqlite3 /tmp/grocy.db \"SELECT COUNT(*) FROM stock_current\" 2>/dev/null || echo 0) && MEAL_PLAN_END=$(sqlite3 /tmp/grocy.db \"SELECT MAX(day) FROM meal_plan\" 2>/dev/null || echo 'なし') && TODAY=$(date +%Y-%m-%d) && NO_PRICE=$(sqlite3 /tmp/grocy.db \"SELECT COUNT(DISTINCT p.id) FROM stock_current sc JOIN products p ON p.id=sc.product_id LEFT JOIN stock s ON s.product_id=p.id WHERE s.price IS NULL OR s.price=0\" 2>/dev/null || echo 0) && echo \"在庫品目数: ${STOCK_COUNT}\" && echo \"献立最終日: ${MEAL_PLAN_END}\" && echo \"本日: ${TODAY}\" && echo \"価格未設定: ${NO_PRICE}品\" && if [ \"$MEAL_PLAN_END\" != 'なし' ] && [ \"$MEAL_PLAN_END\" \\< \"$TODAY\" ]; then echo '⚠ 献立が期限切れです。/recipe-plan で新しい献立を作成してください。'; fi && if [ \"$MEAL_PLAN_END\" != 'なし' ]; then DAYS_LEFT=$(python3 -c \"from datetime import date; d=date.fromisoformat('${MEAL_PLAN_END}')-date.fromisoformat('${TODAY}'); print(d.days)\" 2>/dev/null || echo 0); if [ \"$DAYS_LEFT\" -le 2 ] && [ \"$DAYS_LEFT\" -ge 0 ]; then echo \"⚠ 献立残り${DAYS_LEFT}日。来週の献立準備を検討してください。\"; fi; fi && if [ \"$NO_PRICE\" -gt 0 ]; then echo \"⚠ 価格未設定の商品があります。/stock-update で価格を設定してください。\"; fi"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "matcher": "納品予定日|発注明細|注文ID|八面六臂",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo '発注メールを検出しました。/stock-add スキルで在庫に追加します。商品の保管場所（冷蔵/冷凍）が不明な場合は確認してください。'"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if [ -f /tmp/grocy.db ]; then DB_MOD=$(stat -f %m /tmp/grocy.db 2>/dev/null || stat -c %Y /tmp/grocy.db 2>/dev/null); CONTAINER_MOD=$(docker exec grocy stat -c %Y /config/data/grocy.db 2>/dev/null || echo 0); if [ \"$DB_MOD\" -gt \"$CONTAINER_MOD\" ] 2>/dev/null; then echo '⚠ /tmp/grocy.db がコンテナより新しいです。docker cp /tmp/grocy.db grocy:/config/data/grocy.db でデプロイが必要かもしれません。'; fi; fi"
+          }
+        ]
+      }
+    ]
+  }
+}
