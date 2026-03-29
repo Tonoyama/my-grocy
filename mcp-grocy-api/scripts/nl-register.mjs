@@ -206,6 +206,14 @@ async function findOrCreateProduct(mcp, parsed) {
     body
   });
 
+  if (created?.created_object_id) {
+    created.id = created.created_object_id;
+  }
+
+  if (!created?.id) {
+    throw new Error('Failed to resolve or create product: No ID returned.');
+  }
+
   return {
     product: created,
     locationId: Number(location.id),
@@ -281,7 +289,7 @@ function normalizeName(value) {
 }
 
 function normalizeParsed(parsed) {
-  const amount = typeof parsed.amount === 'number' && parsed.amount > 0 ? parsed.amount : 1;
+  const amount = typeof parsed.amount === 'number' && parsed.amount >= 0 ? parsed.amount : 1;
   const action = parsed.action || 'purchase';
   const note = parsed.note || (parsed.unit ? `unit=${parsed.unit}` : undefined);
 
