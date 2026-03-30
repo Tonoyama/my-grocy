@@ -1,0 +1,596 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>今夜の作り置き</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, sans-serif; background: #1a1a2e; color: #eee; padding: 16px; max-width: 600px; margin: 0 auto; }
+  h1 { font-size: 1.5rem; text-align: center; padding: 12px 0; border-bottom: 2px solid #e94560; margin-bottom: 16px; }
+  .step-group { margin-bottom: 24px; }
+  .step-group h2 { font-size: 1.2rem; color: #e94560; padding: 8px 12px; background: #16213e; border-radius: 8px; margin-bottom: 8px; }
+  .step-group .meta { font-size: 0.85rem; color: #aaa; padding: 0 12px 8px; }
+  .step { display: flex; align-items: flex-start; gap: 12px; padding: 12px; border-radius: 8px; margin-bottom: 4px; font-size: 1.1rem; line-height: 1.6; transition: all 0.3s; }
+  .step.done { opacity: 0.35; text-decoration: line-through; }
+  .step.current-step { background: #16213e; border-left: 4px solid #e94560; }
+  .step input[type=checkbox] { width: 28px; height: 28px; min-width: 28px; margin-top: 2px; accent-color: #e94560; }
+  .step label { flex: 1; }
+  .tag { display: inline-block; font-size: 0.75rem; padding: 2px 8px; border-radius: 4px; margin-right: 4px; font-weight: bold; }
+  .tag-tonight { background: #e94560; color: #fff; }
+  .tag-stock { background: #0f3460; color: #adf; }
+  .timer-btn { display: inline-block; background: #e94560; color: #fff; border: none; border-radius: 6px; padding: 6px 14px; font-size: 0.95rem; margin: 4px 0; cursor: pointer; }
+  .timer-btn:active { background: #c0392b; }
+  .timer-display { font-size: 1.3rem; font-weight: bold; color: #e94560; margin-left: 8px; }
+  .voice-btn { display: block; width: 100%; padding: 16px; margin: 8px 0; font-size: 1.1rem; background: #e94560; color: #fff; border: none; border-radius: 8px; cursor: pointer; }
+  .voice-btn.listening { background: #27ae60; animation: pulse 1.5s infinite; }
+  .voice-btn.processing { background: #f39c12; animation: pulse 0.5s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.6} }
+  .voice-status { text-align: center; font-size: 0.95rem; color: #aaa; padding: 6px 0; min-height: 28px; }
+  .voice-help { font-size: 0.8rem; color: #888; text-align: center; padding: 4px 0 8px; line-height: 1.6; }
+  .progress { text-align: center; font-size: 1rem; color: #aaa; padding: 8px 0; }
+  .save-section { background: #0f3460; border-radius: 8px; padding: 12px; margin-top: 20px; }
+  .save-section h2 { color: #e94560; background: none; padding: 0 0 8px; }
+  .save-section table { width: 100%; font-size: 0.95rem; }
+  .save-section td { padding: 4px 8px; border-bottom: 1px solid #1a1a4e; }
+  .ai-response { background: #0f3460; border: 1px solid #e94560; border-radius: 8px; padding: 12px; margin: 8px 0; font-size: 1rem; line-height: 1.6; display: none; }
+  .ai-response .label { color: #e94560; font-weight: bold; font-size: 0.85rem; margin-bottom: 4px; }
+</style>
+</head>
+<body>
+
+<h1>🍳 今夜の作り置き</h1>
+<button class="voice-btn" id="voiceBtn" onclick="toggleVoice()">🎤 「コンピュータ」で音声操作を開始</button>
+<div class="voice-help">
+  調理:「コンピュータ、次」「完了」「読んで」「タイマー」「戻る」<br>
+  AI:「コンピュータ、鶏そぼろのレシピを読んで」「在庫を確認して」
+</div>
+<div class="voice-status" id="voiceStatus"></div>
+<div class="ai-response" id="aiResponse"><div class="label">🤖 AI応答</div><div id="aiText"></div></div>
+<div class="progress" id="progress">0 / 25 完了</div>
+
+<div class="step-group">
+  <h2>① 下準備（5分）</h2>
+  <div class="step"><input type="checkbox" id="s1" onchange="toggle(this)"><label for="s1">湯を2鍋沸かす<br>A: お吸い物用 600ml<br>B: もやし茹で用</label></div>
+  <div class="step"><input type="checkbox" id="s2" onchange="toggle(this)"><label for="s2">豚ハツ → 脂・血管を取り、5mm薄切り、水で数回洗い、ペーパーで水気を拭く</label></div>
+  <div class="step"><input type="checkbox" id="s3" onchange="toggle(this)"><label for="s3">ホタルイカ <strong>21尾</strong> → 目とくちばしを竹串で取る</label></div>
+  <div class="step"><input type="checkbox" id="s4" onchange="toggle(this)"><label for="s4">たまねぎ 1個 → 薄切り</label></div>
+  <div class="step"><input type="checkbox" id="s5" onchange="toggle(this)"><label for="s5">もやし2種類を洗う<br>・緑豆もやし 200g × 1袋<br>・ミックスもやし 160g × 1袋</label></div>
+</div>
+
+<div class="step-group">
+  <h2>② もやしナムル【5食分】</h2>
+  <div class="meta">全量冷蔵 → 明日から使う</div>
+  <div class="step"><input type="checkbox" id="s6" onchange="toggle(this)"><label for="s6">鍋Bでもやし2種（計360g）を <button class="timer-btn" onclick="startTimer(60,this)">1分タイマー</button><span class="timer-display"></span><br>→ ザルにあげて水気をしっかり絞る</label></div>
+  <div class="step"><input type="checkbox" id="s7" onchange="toggle(this)"><label for="s7">ボウルにもやし＋<br>鶏がらスープの素 小さじ1<br>ごま油 大さじ1<br>塩 少々</label></div>
+  <div class="step"><input type="checkbox" id="s8" onchange="toggle(this)"><label for="s8">いりごま大さじ1 + しそ2枚千切りを混ぜる → <span class="tag tag-stock">全量冷蔵</span></label></div>
+</div>
+
+<div class="step-group">
+  <h2>③ はまぐりのお吸い物【3杯】</h2>
+  <div class="meta">1杯は今夜、2杯は冷蔵</div>
+  <div class="step"><input type="checkbox" id="s9" onchange="toggle(this)"><label for="s9">鍋Aの沸騰した600mlにはまぐり投入</label></div>
+  <div class="step"><input type="checkbox" id="s10" onchange="toggle(this)"><label for="s10">アクを取り除く</label></div>
+  <div class="step"><input type="checkbox" id="s11" onchange="toggle(this)"><label for="s11">うすくち醤油 小さじ1 + 塩少々<br>→ 沸騰直前で火を止める</label></div>
+  <div class="step"><input type="checkbox" id="s12" onchange="toggle(this)"><label for="s12"><span class="tag tag-tonight">1杯 今夜</span><span class="tag tag-stock">2杯 冷蔵</span></label></div>
+</div>
+
+<div class="step-group">
+  <h2>④ 鶏そぼろ【6食分】</h2>
+  <div class="meta">1食は今夜、5食は小分け冷凍</div>
+  <div class="step"><input type="checkbox" id="s13" onchange="toggle(this)"><label for="s13">フライパンに挽肉 600g（4パック）を入れる（油不要）</label></div>
+  <div class="step"><input type="checkbox" id="s14" onchange="toggle(this)"><label for="s14"><strong>濃口醤油</strong> 大さじ3<br>みりん 大さじ2<br>料理酒 大さじ2<br>しょうがチューブ 2cm<br>砂糖 大さじ1</label></div>
+  <div class="step"><input type="checkbox" id="s15" onchange="toggle(this)"><label for="s15">菜箸4〜5本で混ぜながら中火 <button class="timer-btn" onclick="startTimer(420,this)">7分タイマー</button><span class="timer-display"></span><br>→ パラパラになったら火を止める</label></div>
+  <div class="step"><input type="checkbox" id="s16" onchange="toggle(this)"><label for="s16"><span class="tag tag-tonight">1食 今夜</span><span class="tag tag-stock">5食 ラップ小分け→冷凍</span></label></div>
+</div>
+
+<div class="step-group">
+  <h2>⑤ 豚ハツのネギ塩炒め【3食分】</h2>
+  <div class="meta">1食は今夜、2食は冷蔵</div>
+  <div class="step"><input type="checkbox" id="s17" onchange="toggle(this)"><label for="s17">フライパンにごま油 大さじ1 + にんにく1cm → 中火</label></div>
+  <div class="step"><input type="checkbox" id="s18" onchange="toggle(this)"><label for="s18">豚ハツ投入 → 強火で色が変わるまで <button class="timer-btn" onclick="startTimer(180,this)">3分タイマー</button><span class="timer-display"></span></label></div>
+  <div class="step"><input type="checkbox" id="s19" onchange="toggle(this)"><label for="s19">たまねぎ投入 → しんなり <button class="timer-btn" onclick="startTimer(120,this)">2分タイマー</button><span class="timer-display"></span></label></div>
+  <div class="step"><input type="checkbox" id="s20" onchange="toggle(this)"><label for="s20">塩 小さじ1/2 + 黒こしょう → 火を止めてレモン汁 小さじ2</label></div>
+  <div class="step"><input type="checkbox" id="s21" onchange="toggle(this)"><label for="s21"><span class="tag tag-tonight">1食 今夜</span><span class="tag tag-stock">2食 冷蔵</span></label></div>
+</div>
+
+<div class="step-group">
+  <h2>⑥ ホタルイカの酢味噌和え【3食分】</h2>
+  <div class="meta">1食は今夜、2食は冷蔵</div>
+  <div class="step"><input type="checkbox" id="s22" onchange="toggle(this)"><label for="s22">鍋Bの残り湯でホタルイカ<strong>21尾</strong>を <button class="timer-btn" onclick="startTimer(30,this)">30秒タイマー</button><span class="timer-display"></span> 茹で → 冷水 → 水気切る</label></div>
+  <div class="step"><input type="checkbox" id="s23" onchange="toggle(this)"><label for="s23">味噌 大さじ2 + みりん 大さじ1 + カンタン酢 大さじ1 → 混ぜて和える</label></div>
+  <div class="step"><input type="checkbox" id="s24" onchange="toggle(this)"><label for="s24"><span class="tag tag-tonight">1食 今夜</span><span class="tag tag-stock">2食 冷蔵</span></label></div>
+</div>
+
+<div class="step-group">
+  <h2>⑦ あさりの味噌汁【3杯分】</h2>
+  <div class="meta">全量冷蔵 → 3/30昼、3/31昼で使う</div>
+  <div class="step"><input type="checkbox" id="s25" onchange="toggle(this)"><label for="s25">水600ml沸騰 → あさり500g → アク取り → 味噌大さじ3溶く → 沸騰直前で止める → <span class="tag tag-stock">全量冷蔵</span></label></div>
+</div>
+
+<div class="step-group">
+  <h2>⑧ 盛り付けて夕食 🍚</h2>
+  <div class="meta">ご飯0.5合 + 一汁四菜 + 納豆</div>
+</div>
+
+<div class="save-section">
+  <h2>📦 保存チェックリスト</h2>
+  <table>
+    <tr><td>はまぐりお吸い物 ×2</td><td>冷蔵</td></tr>
+    <tr><td>ホタルイカ酢味噌 ×2</td><td>冷蔵</td></tr>
+    <tr><td>豚ハツネギ塩 ×2</td><td>冷蔵</td></tr>
+    <tr><td>鶏そぼろ ×5</td><td>冷凍</td></tr>
+    <tr><td>もやしナムル ×5</td><td>冷蔵</td></tr>
+    <tr><td>あさり味噌汁 ×3</td><td>冷蔵</td></tr>
+  </table>
+</div>
+
+<script>
+// === Audio Context for sound effects ===
+let audioCtx = null;
+function getAudioCtx() {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  return audioCtx;
+}
+
+function playRecognizedSound() {
+  const ctx = getAudioCtx();
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.connect(gain); gain.connect(ctx.destination);
+  osc.type = 'sine';
+  osc.frequency.setValueAtTime(880, ctx.currentTime);
+  osc.frequency.setValueAtTime(1100, ctx.currentTime + 0.08);
+  gain.gain.setValueAtTime(0.3, ctx.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.2);
+  osc.start(ctx.currentTime);
+  osc.stop(ctx.currentTime + 0.2);
+}
+
+let processingInterval = null;
+function startProcessingSound() {
+  const ctx = getAudioCtx();
+  let step = 0;
+  processingInterval = setInterval(() => {
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain); gain.connect(ctx.destination);
+    osc.type = 'sine';
+    const freq = 400 + (step % 3) * 100;
+    osc.frequency.setValueAtTime(freq, ctx.currentTime);
+    gain.gain.setValueAtTime(0.1, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.15);
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime + 0.15);
+    step++;
+  }, 500);
+}
+
+function stopProcessingSound() {
+  if (processingInterval) { clearInterval(processingInterval); processingInterval = null; }
+}
+
+function playCompleteSound() {
+  const ctx = getAudioCtx();
+  [0, 0.12, 0.24].forEach((t, i) => {
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain); gain.connect(ctx.destination);
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime([660, 880, 1100][i], ctx.currentTime + t);
+    gain.gain.setValueAtTime(0.25, ctx.currentTime + t);
+    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + t + 0.15);
+    osc.start(ctx.currentTime + t);
+    osc.stop(ctx.currentTime + t + 0.15);
+  });
+}
+
+function playTimerDoneSound() {
+  const ctx = getAudioCtx();
+  for (let i = 0; i < 3; i++) {
+    const t = i * 0.4;
+    [0, 0.1].forEach((dt, j) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain); gain.connect(ctx.destination);
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(j === 0 ? 800 : 1200, ctx.currentTime + t + dt);
+      gain.gain.setValueAtTime(0.3, ctx.currentTime + t + dt);
+      gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + t + dt + 0.15);
+      osc.start(ctx.currentTime + t + dt);
+      osc.stop(ctx.currentTime + t + dt + 0.15);
+    });
+  }
+}
+
+// === Step management ===
+let currentStepIndex = 0;
+const allSteps = [...document.querySelectorAll('.step')];
+
+function toggle(cb) {
+  cb.closest('.step').classList.toggle('done', cb.checked);
+  updateProgress();
+  localStorage.setItem('cooking-progress', JSON.stringify(
+    [...document.querySelectorAll('.step input')].map(c => c.checked)
+  ));
+}
+
+function updateProgress() {
+  const total = document.querySelectorAll('.step input').length;
+  const done = document.querySelectorAll('.step input:checked').length;
+  document.getElementById('progress').textContent = done + ' / ' + total + ' 完了';
+}
+
+function speak(text, onEnd) {
+  const u = new SpeechSynthesisUtterance(text);
+  u.lang = 'ja-JP';
+  u.rate = 0.95;
+
+  // Pause recognition while speaking to avoid self-hearing
+  if (recognition && isListening) {
+    try { recognition.stop(); } catch(e) {}
+  }
+
+  u.onend = () => {
+    // Restart recognition after speech finishes
+    if (isListening) {
+      setTimeout(() => {
+        try { recognition.start(); } catch(e) {}
+        document.getElementById('voiceStatus').textContent = '🎤 「コンピュータ」と呼んでください';
+      }, 300);
+    }
+    if (onEnd) onEnd();
+  };
+
+  u.onerror = () => {
+    // Also restart on speech error
+    if (isListening) {
+      setTimeout(() => {
+        try { recognition.start(); } catch(e) {}
+      }, 300);
+    }
+  };
+
+  speechSynthesis.cancel();
+  speechSynthesis.speak(u);
+}
+
+function getStepText(step) {
+  const label = step.querySelector('label');
+  if (!label) return '';
+  return label.innerText.replace(/\d+分タイマー|30秒タイマー/g, '').replace(/全量冷蔵|冷蔵|冷凍|今夜/g, '').trim();
+}
+
+function highlightStep(index) {
+  allSteps.forEach(s => s.classList.remove('current-step'));
+  if (index >= 0 && index < allSteps.length) {
+    allSteps[index].classList.add('current-step');
+    allSteps[index].scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+}
+
+function readCurrentStep() {
+  if (currentStepIndex < allSteps.length) {
+    const text = getStepText(allSteps[currentStepIndex]);
+    speak('ステップ' + (currentStepIndex + 1) + '。' + text);
+    highlightStep(currentStepIndex);
+  } else {
+    speak('全ステップ完了です。おつかれさまでした。');
+  }
+}
+
+function completeCurrentStep() {
+  if (currentStepIndex < allSteps.length) {
+    const cb = allSteps[currentStepIndex].querySelector('input');
+    if (cb && !cb.checked) { cb.checked = true; toggle(cb); }
+    playCompleteSound();
+    currentStepIndex++;
+    highlightStep(currentStepIndex);
+  }
+}
+
+function nextStep() {
+  completeCurrentStep();
+  setTimeout(() => readCurrentStep(), 600);
+}
+
+function prevStep() {
+  if (currentStepIndex > 0) {
+    currentStepIndex--;
+    const cb = allSteps[currentStepIndex].querySelector('input');
+    if (cb && cb.checked) { cb.checked = false; toggle(cb); }
+    highlightStep(currentStepIndex);
+    speak('戻りました。');
+    setTimeout(() => readCurrentStep(), 600);
+  }
+}
+
+let activeTimers = {}; // stepIndex -> { interval, btn, display }
+
+function startCurrentTimer() {
+  const btn = allSteps[currentStepIndex]?.querySelector('.timer-btn');
+  if (btn && !btn.disabled) { btn.click(); speak('タイマースタート。'); }
+  else if (activeTimers[currentStepIndex]) { speak('タイマーは動作中です。リセットと言えばやり直せます。'); }
+  else { speak('このステップにタイマーはありません。'); }
+}
+
+function resetCurrentTimer() {
+  const timer = activeTimers[currentStepIndex];
+  if (timer) {
+    clearInterval(timer.interval);
+    timer.display.textContent = '';
+    timer.btn.disabled = false;
+    delete activeTimers[currentStepIndex];
+    speak('タイマーをリセットしました。');
+  } else {
+    speak('動作中のタイマーはありません。');
+  }
+}
+
+function restartCurrentTimer() {
+  const timer = activeTimers[currentStepIndex];
+  if (timer) {
+    clearInterval(timer.interval);
+    timer.display.textContent = '';
+    timer.btn.disabled = false;
+    delete activeTimers[currentStepIndex];
+    timer.btn.click();
+    speak('タイマーをやり直します。');
+  } else {
+    // No active timer - just start fresh
+    startCurrentTimer();
+  }
+}
+
+function startTimer(seconds, btn) {
+  const display = btn.nextElementSibling;
+  btn.disabled = true;
+  let remaining = seconds;
+  const stepIdx = allSteps.indexOf(btn.closest('.step'));
+  const interval = setInterval(() => {
+    const m = Math.floor(remaining / 60);
+    const s = remaining % 60;
+    display.textContent = m > 0 ? m + ':' + String(s).padStart(2, '0') : s + '秒';
+    if (remaining <= 0) {
+      clearInterval(interval);
+      display.textContent = '✅ 完了！';
+      btn.disabled = false;
+      delete activeTimers[stepIdx];
+      playTimerDoneSound();
+      speak('タイマー完了です。');
+    }
+    remaining--;
+  }, 1000);
+  if (stepIdx >= 0) {
+    activeTimers[stepIdx] = { interval, btn, display, originalSeconds: seconds };
+  }
+}
+
+// === AI Integration ===
+function buildContext() {
+  // Current step info
+  let stepInfo = '';
+  if (currentStepIndex < allSteps.length) {
+    const groupEl = allSteps[currentStepIndex].closest('.step-group');
+    const groupName = groupEl?.querySelector('h2')?.textContent || '';
+    const stepText = getStepText(allSteps[currentStepIndex]);
+    stepInfo = `現在のステップ: ${groupName} - ${stepText}`;
+  }
+
+  return (
+    '【現在の調理状況】\n' +
+    stepInfo + '\n\n' +
+    '【今夜作っている料理】\n' +
+    '1. もやしナムル（5食分）: 緑豆もやし200g+ミックスもやし160g、鶏がらスープの素・ごま油・いりごま・しそ\n' +
+    '2. はまぐりのお吸い物（3杯）: はまぐり500g、うすくち醤油小さじ1・塩少々\n' +
+    '3. 鶏むね挽肉の鶏そぼろ（6食分）: 鶏むね挽肉600g(4パック)、濃口醤油大さじ3・みりん大さじ2・料理酒大さじ2・しょうが2cm・砂糖大さじ1\n' +
+    '4. 豚ハツのネギ塩炒め（3食分）: 豚ハツ250g・たまねぎ1個薄切り、ごま油・にんにく・塩・黒こしょう・レモン汁\n' +
+    '5. ホタルイカの酢味噌和え（3食分）: ホタルイカ21尾、味噌大さじ2・みりん大さじ1・カンタン酢大さじ1\n' +
+    '6. あさりの味噌汁（3杯）: あさり500g、味噌大さじ3\n' +
+    '7. 納豆（そのまま）\n'
+  );
+}
+
+async function askAI(prompt) {
+  const btn = document.getElementById('voiceBtn');
+  const statusEl = document.getElementById('voiceStatus');
+  const responseEl = document.getElementById('aiResponse');
+  const textEl = document.getElementById('aiText');
+
+  btn.classList.add('processing');
+  btn.classList.remove('listening');
+  statusEl.textContent = '🤖 AIに問い合わせ中...';
+  startProcessingSound();
+
+  try {
+    const resp = await fetch('http://localhost:8091/ai', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt, context: buildContext() })
+    });
+    const data = await resp.json();
+    stopProcessingSound();
+    playCompleteSound();
+
+    const answer = data.response || data.error || '応答がありません';
+    textEl.textContent = answer;
+    responseEl.style.display = 'block';
+    statusEl.textContent = '🤖 AI応答完了';
+    speak(answer.substring(0, 500));
+  } catch (e) {
+    stopProcessingSound();
+    statusEl.textContent = '⚠ AIサーバーに接続できません（voice-server.py を起動してください）';
+    speak('AIサーバーに接続できませんでした。');
+  } finally {
+    btn.classList.remove('processing');
+    if (isListening) {
+      btn.classList.add('listening');
+      btn.textContent = '🟢 音声認識中...「コンピュータ」と呼んでください';
+      // Ensure recognition is running after AI completes
+      setTimeout(() => {
+        if (isListening && !speechSynthesis.speaking) {
+          try { recognition.stop(); } catch(e) {}
+          setTimeout(() => {
+            try { recognition.start(); } catch(e) {}
+            document.getElementById('voiceStatus').textContent = '🎤 「コンピュータ」と呼んでください';
+          }, 300);
+        }
+      }, 500);
+    }
+  }
+}
+
+// === Voice Recognition ===
+let recognition = null;
+let isListening = false;
+
+const COOKING_COMMANDS = ['次', 'つぎ', '完了', 'かんりょう', 'チェック', 'オッケー', 'ok',
+  '読んで', 'よんで', 'もう一回', 'もういっかい', 'リピート',
+  'タイマー', 'スタート', 'リセット', 'やり直', 'もう一度',
+  '戻る', 'もどる', '前', 'ストップ', '止めて'];
+
+function isCookingCommand(text) {
+  const t = text.toLowerCase();
+  return COOKING_COMMANDS.some(cmd => t.includes(cmd));
+}
+
+function handleCookingCommand(text) {
+  const t = text.toLowerCase();
+  if (t.includes('次') || t.includes('つぎ')) { nextStep(); }
+  else if (t.includes('完了') || t.includes('かんりょう') || t.includes('チェック') || t.includes('オッケー') || t.includes('ok')) { completeCurrentStep(); }
+  else if (t.includes('読') || t.includes('よんで') || t.includes('もう一回') || t.includes('もういっかい') || t.includes('リピート')) { readCurrentStep(); }
+  else if (t.includes('リセット')) { resetCurrentTimer(); }
+  else if (t.includes('やり直') || t.includes('もう一度') || t.includes('もういちど') || t.includes('もっかい')) { restartCurrentTimer(); }
+  else if (t.includes('タイマー') || t.includes('スタート') || t.includes('計って') || t.includes('はかって') || t.includes('測って') || t.includes('時間')) { startCurrentTimer(); }
+  else if (t.includes('戻') || t.includes('もどる') || t.includes('前')) { prevStep(); }
+  else if (t.includes('ストップ') || t.includes('止めて')) { toggleVoice(); }
+}
+
+function handleVoiceInput(transcript) {
+  const statusEl = document.getElementById('voiceStatus');
+  const t = transcript.trim();
+
+  // Fuzzy wake word matching for noisy environments
+  // コンピュータ can be misheard as: コンピューター, コンピュータ, こんぴゅーた,
+  // コンビューター, コンピュター, コンピュウタ, etc.
+  const wakePatterns = [
+    /コンピュータ[ー]?/,
+    /こんぴゅーた[ー]?/,
+    /コンビュータ[ー]?/,
+    /コンピュウタ[ー]?/,
+    /コンピュター/,
+    /コンプータ[ー]?/,
+    /computer/i,
+  ];
+
+  let wakeIndex = -1;
+  let wakeLength = 0;
+  for (const pat of wakePatterns) {
+    const m = t.match(pat);
+    if (m) {
+      wakeIndex = m.index;
+      wakeLength = m[0].length;
+      break;
+    }
+  }
+
+  if (wakeIndex < 0) return; // No wake word
+
+  const afterWake = t.substring(wakeIndex + wakeLength).replace(/^[ー,、．.　 ]+/, '').trim();
+
+  if (!afterWake) {
+    playRecognizedSound();
+    statusEl.textContent = '🎤 コマンドを待っています...';
+    return;
+  }
+
+  const command = afterWake;
+  if (command.length === 1 && !['次', '前'].includes(command)) return;
+
+  playRecognizedSound();
+  statusEl.textContent = '🗣 「' + command + '」';
+
+  if (isCookingCommand(command)) {
+    handleCookingCommand(command);
+  } else {
+    // AI command
+    askAI(command);
+  }
+}
+
+function toggleVoice() {
+  const btn = document.getElementById('voiceBtn');
+  if (isListening) {
+    recognition?.stop();
+    isListening = false;
+    btn.textContent = '🎤 「コンピュータ」で音声操作を開始';
+    btn.classList.remove('listening');
+    document.getElementById('voiceStatus').textContent = '';
+    return;
+  }
+
+  if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
+    alert('このブラウザは音声認識に対応していません。Chrome を使ってください。');
+    return;
+  }
+
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  recognition = new SR();
+  recognition.lang = 'ja-JP';
+  recognition.continuous = true;
+  recognition.interimResults = true;
+
+  recognition.onresult = (e) => {
+    for (let i = e.resultIndex; i < e.results.length; i++) {
+      if (e.results[i].isFinal) {
+        handleVoiceInput(e.results[i][0].transcript);
+      } else {
+        // Check interim results for wake word to give faster feedback
+        const interim = e.results[i][0].transcript;
+        if (/コンピュ|こんぴゅ|computer/i.test(interim)) {
+          document.getElementById('voiceStatus').textContent = '🎤 聞き取り中...';
+        }
+      }
+    }
+  };
+
+  recognition.interimResults = true;
+
+  recognition.onerror = (e) => {
+    if (e.error !== 'no-speech' && e.error !== 'aborted') {
+      document.getElementById('voiceStatus').textContent = '⚠ ' + e.error;
+    }
+  };
+
+  recognition.onend = () => {
+    // Only auto-restart if not currently speaking (speak() handles its own restart)
+    if (isListening && !speechSynthesis.speaking) {
+      setTimeout(() => {
+        try { recognition.start(); } catch(e) {}
+      }, 200);
+    }
+  };
+
+  recognition.start();
+  isListening = true;
+  btn.textContent = '🟢 音声認識中...「コンピュータ」と呼んでください';
+  btn.classList.add('listening');
+  playRecognizedSound();
+  speak('音声操作を開始します。コンピュータ、と呼んでからコマンドを言ってください。');
+  highlightStep(currentStepIndex);
+}
+
+// Restore progress
+try {
+  const saved = JSON.parse(localStorage.getItem('cooking-progress'));
+  if (saved) {
+    document.querySelectorAll('.step input').forEach((cb, i) => {
+      if (saved[i]) { cb.checked = true; cb.closest('.step').classList.add('done'); }
+    });
+    updateProgress();
+    currentStepIndex = saved.filter(x => x).length;
+  }
+} catch(e) {}
+</script>
+</body>
+</html>
