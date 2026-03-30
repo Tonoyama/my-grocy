@@ -1,0 +1,184 @@
+:root {
+  --bg: #1a1a2e;
+  --bg-card: #16213e;
+  --bg-input: #0f3460;
+  --accent: #e94560;
+  --accent-dim: #c0392b;
+  --text: #eee;
+  --text-dim: #999;
+  --green: #27ae60;
+  --orange: #f39c12;
+  --border: #2a2a4e;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: -apple-system, 'Hiragino Sans', sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  max-width: 700px;
+  margin: 0 auto;
+  padding: 0 0 140px 0;
+  min-height: 100vh;
+}
+
+/* ── Tab Bar ── */
+.tab-bar {
+  position: sticky; top: 0; z-index: 100;
+  display: flex;
+  background: var(--bg-card);
+  border-bottom: 2px solid var(--accent);
+  overflow-x: auto;
+}
+.tab-bar button {
+  flex: 1; min-width: 0;
+  padding: 12px 4px;
+  background: none; border: none; color: var(--text-dim);
+  font-size: 0.85rem; cursor: pointer;
+  border-bottom: 3px solid transparent;
+  white-space: nowrap;
+}
+.tab-bar button.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+  font-weight: bold;
+}
+
+/* ── Sections ── */
+section { display: none; padding: 16px; }
+section.active { display: block; }
+
+/* ── Cards ── */
+.card {
+  background: var(--bg-card);
+  border-radius: 8px;
+  padding: 12px;
+  margin-bottom: 10px;
+}
+.card h3 { color: var(--accent); font-size: 1rem; margin-bottom: 6px; }
+
+/* ── Link buttons ── */
+.link-btn {
+  display: block; width: 100%;
+  padding: 14px;
+  background: var(--bg-input);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 1rem;
+  text-decoration: none;
+  text-align: center;
+  margin-bottom: 8px;
+}
+.link-btn:hover { border-color: var(--accent); }
+
+/* ── Stock / Table ── */
+.stock-group h3 { color: var(--accent); font-size: 1rem; padding: 8px 0 4px; }
+.stock-item {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.95rem;
+}
+.stock-item.expiring { background: rgba(233, 69, 96, 0.15); }
+.stock-item .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.stock-item .amount { color: var(--text-dim); white-space: nowrap; }
+.stock-item .sep { color: var(--border); }
+.stock-item .bbd { color: var(--text-dim); white-space: nowrap; font-size: 0.85rem; }
+.stock-item .bbd.expiring-text { color: var(--accent); font-weight: bold; }
+.stock-item .price { color: var(--text-dim); white-space: nowrap; }
+
+/* ── Meal Plan ── */
+.day-card { margin-bottom: 16px; }
+.day-card h3 { font-size: 1rem; color: var(--accent); padding: 8px 0; border-bottom: 1px solid var(--border); }
+.day-card .meal-section { padding: 6px 0; }
+.day-card .meal-label { font-size: 0.8rem; color: var(--text-dim); padding: 4px 0; }
+.day-card .recipe-link {
+  display: block; padding: 6px 0; color: var(--text);
+  text-decoration: none; cursor: pointer;
+}
+.day-card .recipe-link:hover { color: var(--accent); }
+
+/* ── Cooking Guide ── */
+.recipe-group { margin-bottom: 20px; }
+.recipe-group h3 {
+  color: var(--accent); padding: 8px 12px;
+  background: var(--bg-card); border-radius: 8px;
+  margin-bottom: 6px; font-size: 1.1rem;
+}
+.recipe-group .meta { font-size: 0.8rem; color: var(--text-dim); padding: 0 12px 6px; }
+.step {
+  display: flex; align-items: flex-start; gap: 10px;
+  padding: 10px; border-radius: 6px;
+  margin-bottom: 3px; font-size: 1rem; line-height: 1.5;
+  transition: all 0.2s;
+}
+.step.done { opacity: 0.3; text-decoration: line-through; }
+.step.current-step { background: var(--bg-card); border-left: 4px solid var(--accent); }
+.step input[type=checkbox] {
+  width: 26px; height: 26px; min-width: 26px;
+  margin-top: 2px; accent-color: var(--accent);
+}
+.step label { flex: 1; }
+.tag { display: inline-block; font-size: 0.7rem; padding: 2px 6px; border-radius: 4px; margin-right: 4px; font-weight: bold; }
+.tag-meal { background: var(--accent); color: #fff; }
+.tag-storage { background: var(--bg-input); color: #adf; }
+.timer-btn {
+  display: inline-block; background: var(--accent); color: #fff;
+  border: none; border-radius: 6px; padding: 5px 12px;
+  font-size: 0.9rem; margin: 3px 0; cursor: pointer;
+}
+.timer-display { font-size: 1.2rem; font-weight: bold; color: var(--accent); margin-left: 6px; }
+
+/* ── Deals ── */
+.search-bar {
+  display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap;
+}
+.search-bar input, .search-bar select {
+  padding: 10px; border-radius: 6px; border: 1px solid var(--border);
+  background: var(--bg-input); color: var(--text); font-size: 0.95rem;
+  flex: 1; min-width: 0;
+}
+.search-bar button {
+  padding: 10px 18px; background: var(--accent); color: #fff;
+  border: none; border-radius: 6px; font-size: 0.95rem; cursor: pointer;
+}
+.deal-item {
+  background: var(--bg-card); border-radius: 8px; padding: 10px 12px; margin-bottom: 8px;
+}
+.deal-item .deal-name { font-weight: bold; margin-bottom: 4px; }
+.deal-item .deal-info { font-size: 0.85rem; color: var(--text-dim); }
+.deal-item a { color: var(--accent); font-size: 0.85rem; }
+
+/* ── Voice ── */
+.voice-bar {
+  position: fixed; bottom: 0; left: 0; right: 0;
+  background: var(--bg-card); border-top: 2px solid var(--accent);
+  padding: 8px 16px; max-width: 700px; margin: 0 auto;
+  z-index: 100;
+}
+.voice-btn {
+  display: block; width: 100%; padding: 12px;
+  font-size: 1rem; background: var(--accent); color: #fff;
+  border: none; border-radius: 8px; cursor: pointer;
+}
+.voice-btn.listening { background: var(--green); animation: pulse 1.5s infinite; }
+.voice-btn.processing { background: var(--orange); animation: pulse 0.5s infinite; }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.6} }
+.voice-status { text-align: center; font-size: 0.85rem; color: var(--text-dim); padding: 4px 0; min-height: 20px; }
+.ai-response {
+  background: var(--bg-input); border: 1px solid var(--accent);
+  border-radius: 8px; padding: 10px; margin: 8px 16px;
+  font-size: 0.95rem; line-height: 1.5; display: none;
+  max-width: 700px;
+}
+.ai-response .label { color: var(--accent); font-weight: bold; font-size: 0.8rem; margin-bottom: 4px; }
+
+/* ── Misc ── */
+.progress { text-align: center; font-size: 0.9rem; color: var(--text-dim); padding: 6px 0; }
+.date-nav { display: flex; align-items: center; justify-content: center; gap: 12px; padding: 8px 0; }
+.date-nav button { background: var(--bg-input); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 6px 14px; cursor: pointer; font-size: 0.9rem; }
+.date-nav span { font-size: 1rem; font-weight: bold; }
+.loading { text-align: center; color: var(--text-dim); padding: 40px 0; }
+.filter-input { width: 100%; padding: 10px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg-input); color: var(--text); font-size: 0.95rem; margin-bottom: 10px; }

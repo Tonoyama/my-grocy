@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kitchen App</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+
+<nav class="tab-bar">
+  <button data-tab="home" class="active">🏠 Home</button>
+  <button data-tab="cooking">🍳 Cooking</button>
+  <button data-tab="mealplan">📅 Meal Plan</button>
+  <button data-tab="stock">📦 Stock</button>
+  <button data-tab="deals">💰 Deals</button>
+</nav>
+
+<!-- HOME -->
+<section id="tab-home" class="active">
+  <a href="http://localhost:9283" target="_blank" class="link-btn">📊 Grocy を開く</a>
+  <a href="http://localhost:8050" target="_blank" class="link-btn">💹 八面六臂ダッシュボード</a>
+  <div id="home-summary" class="loading">読み込み中...</div>
+</section>
+
+<!-- COOKING -->
+<section id="tab-cooking">
+  <div class="date-nav">
+    <button onclick="App.cooking.prevDay()">◀</button>
+    <span id="cooking-date"></span>
+    <button onclick="App.cooking.nextDay()">▶</button>
+  </div>
+  <div class="progress" id="cooking-progress"></div>
+  <div id="cooking-content" class="loading">読み込み中...</div>
+</section>
+
+<!-- MEAL PLAN -->
+<section id="tab-mealplan">
+  <div class="date-nav">
+    <button onclick="App.mealplan.prevWeek()">◀ 前週</button>
+    <span id="mealplan-week"></span>
+    <button onclick="App.mealplan.nextWeek()">次週 ▶</button>
+  </div>
+  <div id="mealplan-content" class="loading">読み込み中...</div>
+</section>
+
+<!-- STOCK -->
+<section id="tab-stock">
+  <input class="filter-input" id="stock-filter" placeholder="検索..." oninput="App.stock.filter()">
+  <div id="stock-content" class="loading">読み込み中...</div>
+</section>
+
+<!-- DEALS -->
+<section id="tab-deals">
+  <div class="search-bar">
+    <select id="deals-category"><option value="ALL">全カテゴリ</option></select>
+    <input id="deals-query" placeholder="キーワード">
+    <button onclick="App.deals.search()">検索</button>
+  </div>
+  <div id="deals-content"></div>
+</section>
+
+<!-- VOICE BAR -->
+<div class="ai-response" id="aiResponse"><div class="label">🤖 AI</div><div id="aiText"></div></div>
+<div class="voice-bar">
+  <div class="voice-status" id="voiceStatus"></div>
+  <button class="voice-btn" id="voiceBtn" onclick="App.voice.toggle()">🎤 「コンピュータ」で音声操作</button>
+</div>
+
+<script src="/app.js"></script>
+</body>
+</html>
