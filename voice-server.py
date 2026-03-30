@@ -77,6 +77,9 @@ def parse_recipe_description(desc):
     return {"title": title, "ingredients": ingredients, "methods": methods, "storage": storage}
 
 
+_recipe_plan_status = {"running": False, "result": None}
+
+
 class Handler(BaseHTTPRequestHandler):
 
     # ── GET ──────────────────────────────────────────────
@@ -103,6 +106,11 @@ class Handler(BaseHTTPRequestHandler):
                 self._api_deals(qs)
             elif path == "/api/deals/categories":
                 self._api_deals_categories()
+            elif path == "/api/recipe-plan/status":
+                self._json(200, {
+                    "running": _recipe_plan_status["running"],
+                    "result": _recipe_plan_status["result"]
+                })
             else:
                 self._json(404, {"error": "not found"})
         except Exception as e:
@@ -274,26 +282,36 @@ class Handler(BaseHTTPRequestHandler):
             body = json.loads(self.rfile.read(length)) if length else {}
             prompt = body.get("prompt", "")
             context = body.get("context", "")
+            history = body.get("history", [])  # [{role: "user"/"ai", text: "..."}]
             if not prompt:
                 self._json(400, {"error": "prompt is required"})
                 return
 
             system = (
-                "あなたはキッチンアシスタントです。ユーザーは今まさに料理中です。\n"
-                "Grocyの在庫・レシピ・献立を管理できます。\n\n"
+                "あなたはキッチンアシスタントです。Grocyの在庫・レシピ・献立を管理できます。\n\n"
                 "【重要ルール】\n"
-                "- 質問には今作っている料理の文脈で具体的に答えること。一般論は不要。\n"
-                "- 「何mm？」「何分？」等には数字1つで即答し、理由は1文だけ。\n"
-                "- 回答は音声読み上げ用に短く簡潔に。3文以内を目標とする。\n"
-                "- マークダウンの装飾は使わず、プレーンテキストで返すこと。\n"
-                "- 箇条書きや表は使わないこと。\n\n"
-                "【食材制約ルール（最重要）】\n"
-                "- レシピの変更や提案時、Grocyの在庫に存在する食材・調味料のみを使うこと。\n"
-                "- 在庫にない食材は絶対に使わない。「一般家庭にあるだろう」と推測しない。\n"
-                "- 在庫にない食材が必要な場合は、在庫内の代替品を提案するか、ユーザーに購入を確認する。\n"
-                "- 在庫確認: sqlite3 /tmp/grocy.db \"SELECT p.name FROM stock_current sc JOIN products p ON p.id=sc.product_id;\"\n\n"
+                "- ユーザーの依頼には即座に実行すること。確認が必要な場合のみ質問する。\n"
+                "- 在庫の追加・削除・更新はツールを使って実際にDBを操作すること。\n"
+                "- 操作後は結果を簡潔に報告する（例: 「小松菜 1袋 200円で冷蔵庫に登録しました」）。\n"
+                "- 回答は簡潔に。3文以内を目標とする。\n"
+                "- マークダウンの装飾は使わず、プレーンテキストで返すこと。\n\n"
+                "【DB操作手順】\n"
+                "- 操作前: docker cp grocy:/config/data/grocy.db /tmp/grocy.db\n"
+                "- 操作後: docker cp /tmp/grocy.db grocy:/config/data/grocy.db\n"
+                "- 在庫確認: sqlite3 /tmp/grocy.db \"SELECT p.id,p.name,sc.amount,qu.name FROM stock_current sc JOIN products p ON p.id=sc.product_id LEFT JOIN quantity_units qu ON p.qu_id_stock=qu.id;\"\n"
+                "- 新規商品登録時: products, stock, stock_log テーブルに挿入\n"
+                "- location_id: 2=冷蔵庫, 3=冷凍庫, 4=調味料\n"
+                "- qu_id: 2=Piece, 3=Pack, 4=g, 5=個, 6=本, 7=枚, 8=切, 9=尾, 10=袋, 11=丁, 12=パック\n"
+                "- stock挿入時: stock_id=hex(randomblob(16)), transaction_type='purchase', user_id=1\n\n"
                 f"{context}"
             )
+
+            # Build full prompt with conversation history
+            full_prompt = ""
+            for msg in history:
+                role = "ユーザー" if msg.get("role") == "user" else "アシスタント"
+                full_prompt += f"[{role}]: {msg.get('text', '')}\n"
+            full_prompt += f"[ユーザー]: {prompt}"
 
             try:
                 result = subprocess.run(
@@ -302,7 +320,7 @@ class Handler(BaseHTTPRequestHandler):
                         "--system-prompt", system,
                         "--allowedTools", "Bash(docker cp *),Bash(sqlite3 *),Bash(curl *),Read,Grep,Glob",
                     ],
-                    input=prompt,
+                    input=full_prompt,
                     capture_output=True, text=True, timeout=120,
                     cwd=WORK_DIR
                 )
@@ -314,6 +332,35 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(500, {"error": "claude コマンドが見つかりません。"})
             except Exception as e:
                 self._json(500, {"error": str(e)})
+        elif self.path == "/api/recipe-plan":
+            length = int(self.headers.get("Content-Length", 0))
+            body = json.loads(self.rfile.read(length)) if length else {}
+            week = body.get("week", "今週月〜日")
+            # Run in background thread
+            import threading
+            def run_plan():
+                _recipe_plan_status["running"] = True
+                _recipe_plan_status["result"] = None
+                try:
+                    result = subprocess.run(
+                        ["claude", "-p", "--allowedTools",
+                         "Bash,Read,Write,Edit,Glob,Grep"],
+                        input=f"/recipe-plan {week}",
+                        capture_output=True, text=True, timeout=600,
+                        cwd=WORK_DIR
+                    )
+                    _recipe_plan_status["result"] = result.stdout.strip() or result.stderr.strip() or "完了しました"
+                except subprocess.TimeoutExpired:
+                    _recipe_plan_status["result"] = "タイムアウトしました（10分）"
+                except Exception as e:
+                    _recipe_plan_status["result"] = str(e)
+                finally:
+                    _recipe_plan_status["running"] = False
+            if _recipe_plan_status.get("running"):
+                self._json(409, {"error": "献立作成が既に実行中です"})
+            else:
+                threading.Thread(target=run_plan, daemon=True).start()
+                self._json(202, {"message": "献立作成を開始しました"})
         else:
             self._json(404, {"error": "not found"})
 

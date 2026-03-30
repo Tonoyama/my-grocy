@@ -155,10 +155,16 @@ App.home = {
 
     // AI Chat
     html += '<div class="card"><h3>🤖 AI チャット</h3>';
+    html += '<div class="chat-quick">';
+    html += '<button onclick="App.home.quick(\'今日の献立を教えて\')">今日の献立</button>';
+    html += '<button onclick="App.home.quick(\'在庫一覧を見せて\')">在庫確認</button>';
+    html += '<button onclick="App.home.quick(\'賞味期限が近いものは？\')">期限チェック</button>';
+    html += '<button onclick="App.home.recipePlan()" id="recipe-plan-btn">今週の献立を再作成</button>';
+    html += '</div>';
     html += '<div id="chat-messages" style="max-height:300px;overflow-y:auto;margin-bottom:8px"></div>';
     html += '<div style="display:flex;gap:6px">';
-    html += '<input id="chat-input" placeholder="質問を入力..." style="flex:1;padding:8px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text);font-size:0.95rem">';
-    html += '<button onclick="App.home.send()" style="padding:8px 16px;border:none;border-radius:6px;background:var(--accent);color:#fff;cursor:pointer">送信</button>';
+    html += '<input id="chat-input" placeholder="質問や指示を入力..." style="flex:1;padding:8px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text);font-size:0.95rem">';
+    html += '<button onclick="App.home.send()" id="chat-send-btn" style="padding:8px 16px;border:none;border-radius:6px;background:var(--accent);color:#fff;cursor:pointer">送信</button>';
     html += '</div></div>';
 
     $('home-summary').innerHTML = html;
@@ -167,27 +173,84 @@ App.home = {
     $('chat-input').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.isComposing) App.home.send(); });
   },
 
+  chatHistory: [],
+
+  quick(text) { $('chat-input').value = text; App.home.send(); },
+
   async send() {
     const input = $('chat-input');
     const msg = input.value.trim();
     if (!msg) return;
     input.value = '';
 
+    this.chatHistory.push({ role: 'user', text: msg });
+
     const messages = $('chat-messages');
     messages.innerHTML += `<div style="padding:6px 0;color:var(--text)"><b>あなた:</b> ${escHtml(msg)}</div>`;
     const thinkingId = 'ai-thinking-' + Date.now();
     messages.innerHTML += `<div id="${thinkingId}" style="padding:6px 0;color:var(--text-dim)">🤖 考え中...</div>`;
     messages.scrollTop = messages.scrollHeight;
+    $('chat-send-btn').disabled = true;
 
     try {
-      const resp = await fetch('/ai', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt: msg, context: '' }) });
+      const resp = await fetch('/ai', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          prompt: msg,
+          context: '',
+          history: this.chatHistory.slice(-10)  // 直近10件を送信
+        })
+      });
       const data = await resp.json();
       const answer = data.response || data.error || '応答なし';
+      this.chatHistory.push({ role: 'ai', text: answer });
       $(thinkingId).innerHTML = `<b>🤖 AI:</b> ${escHtml(answer).replace(/\n/g, '<br>')}`;
     } catch(e) {
       $(thinkingId).innerHTML = '<b>🤖 AI:</b> <span style="color:var(--accent)">サーバーに接続できません</span>';
     }
+    $('chat-send-btn').disabled = false;
     messages.scrollTop = messages.scrollHeight;
+  },
+
+  async recipePlan() {
+    const btn = $('recipe-plan-btn');
+    const messages = $('chat-messages');
+    btn.disabled = true;
+    btn.textContent = '🔄 献立作成中...';
+    messages.innerHTML += '<div style="padding:6px 0;color:var(--text-dim)">🤖 献立を再作成しています（数分かかります）...</div>';
+    messages.scrollTop = messages.scrollHeight;
+
+    try {
+      const resp = await fetch('/api/recipe-plan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ week: '今週月〜日' })
+      });
+      const data = await resp.json();
+      if (resp.status === 409) {
+        messages.innerHTML += `<div style="padding:6px 0;color:var(--accent)">⚠ ${data.error}</div>`;
+        btn.disabled = false; btn.textContent = '今週の献立を再作成';
+        return;
+      }
+      // Poll for completion
+      const poll = setInterval(async () => {
+        try {
+          const sr = await fetch('/api/recipe-plan/status');
+          const st = await sr.json();
+          if (!st.running) {
+            clearInterval(poll);
+            const result = st.result || '完了しました';
+            messages.innerHTML += `<div style="padding:6px 0"><b>🤖 AI:</b> ${escHtml(result).replace(/\n/g, '<br>')}</div>`;
+            messages.scrollTop = messages.scrollHeight;
+            btn.disabled = false; btn.textContent = '今週の献立を再作成';
+          }
+        } catch(e) { /* keep polling */ }
+      }, 5000);
+    } catch(e) {
+      messages.innerHTML += '<div style="padding:6px 0;color:var(--accent)">⚠ サーバーに接続できません</div>';
+      btn.disabled = false; btn.textContent = '今週の献立を再作成';
+    }
   }
 };
 
