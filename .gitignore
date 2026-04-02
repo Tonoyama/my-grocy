@@ -1,4 +1,6 @@
 .env
+.healthplanet_token.json
+.claude/scheduled_tasks.lock
 
 # Grocy runtime data
 grocy-config/data/grocy.db

@@ -9,6 +9,8 @@ import os
 import re
 import sqlite3
 import mimetypes
+import threading
+import uuid
 from datetime import date, timedelta
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
@@ -78,6 +80,7 @@ def parse_recipe_description(desc):
 
 
 _recipe_plan_status = {"running": False, "result": None}
+_ai_tasks = {}  # {task_id: {"running": bool, "result": str|None, "choices": list|None}}
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -106,6 +109,14 @@ class Handler(BaseHTTPRequestHandler):
                 self._api_deals(qs)
             elif path == "/api/deals/categories":
                 self._api_deals_categories()
+            elif path == "/api/ai/status":
+                task_id = qs.get("id", [None])[0]
+                if task_id and task_id in _ai_tasks:
+                    self._json(200, _ai_tasks[task_id])
+                else:
+                    self._json(404, {"error": "task not found"})
+            elif path == "/api/mealplan/validate":
+                self._api_mealplan_validate(qs)
             elif path == "/api/recipe-plan/status":
                 self._json(200, {
                     "running": _recipe_plan_status["running"],
@@ -206,6 +217,190 @@ class Handler(BaseHTTPRequestHandler):
 
         self._json(200, {"date": target, "recipes": guide})
 
+    def _api_mealplan_validate(self, qs):
+        """Validate meal plan against constraints: expiry, cost, effort."""
+        today_str = date.today().isoformat()
+        d_from = qs.get("from", [today_str])[0]
+        d_to = qs.get("to", [(date.today() + timedelta(days=6)).isoformat()])[0]
+        budget = int(qs.get("budget", ["1000"])[0])
+
+        # Effort classification keywords
+        EFFORT_ZERO = {"納豆", "プレーンヨーグルト", "ネーブルオレンジ"}
+        EFFORT_REHEAT_KW = ["作り置き", "水煮", "レンチン", "レンジ", "トースター", "そのまま"]
+        EFFORT_QUICK_KW = ["味噌汁", "スープ", "サラダ", "ナムル", "おひたし", "冷奴"]
+        EFFORT_FRY_KW = ["フライ", "メンチカツ", "竜田揚げ", "揚げ"]
+
+        def classify_effort(name, desc):
+            if name in EFFORT_ZERO:
+                return "zero"
+            d = (desc or "").lower()
+            if "低温調理" in name or "低温調理" in d:
+                return "cook"
+            if any(kw in name or kw in d for kw in EFFORT_REHEAT_KW):
+                return "reheat"
+            if any(kw in name for kw in EFFORT_FRY_KW):
+                return "reheat"
+            if any(kw in name for kw in EFFORT_QUICK_KW):
+                return "quick"
+            return "cook"
+
+        EFFORT_LABELS = {
+            "zero": "そのまま",
+            "reheat": "温めるだけ",
+            "passive": "放置調理",
+            "quick": "5分以内",
+            "cook": "要調理",
+        }
+
+        # Get meal plan with recipe + ingredient details
+        meals = query_db(GROCY_DB, """
+            SELECT mp.day, mp.section_id, mps.name as section_name,
+                   r.id as recipe_id, r.name as recipe_name,
+                   r.description, r.base_servings
+            FROM meal_plan mp
+            LEFT JOIN meal_plan_sections mps ON mp.section_id = mps.id
+            LEFT JOIN recipes r ON mp.recipe_id = r.id
+            WHERE mp.day BETWEEN ? AND ?
+            ORDER BY mp.day, mp.section_id
+        """, (d_from, d_to))
+
+        # Get all recipe ingredients with stock info
+        recipe_ids = list(set(m["recipe_id"] for m in meals if m["recipe_id"]))
+        ingredients = []
+        if recipe_ids:
+            placeholders = ",".join("?" * len(recipe_ids))
+            ingredients = query_db(GROCY_DB, f"""
+                SELECT rp.recipe_id, rp.product_id, p.name as product_name,
+                       rp.amount, r.base_servings,
+                       s.price, s.best_before_date, p.location_id
+                FROM recipes_pos rp
+                JOIN products p ON rp.product_id = p.id
+                JOIN recipes r ON rp.recipe_id = r.id
+                LEFT JOIN stock s ON s.product_id = p.id
+                WHERE rp.recipe_id IN ({placeholders})
+                GROUP BY rp.recipe_id, rp.product_id
+            """, recipe_ids)
+
+        # Build ingredient lookup: recipe_id -> [{product, price, expiry, ...}]
+        ing_by_recipe = {}
+        for ing in ingredients:
+            rid = ing["recipe_id"]
+            if rid not in ing_by_recipe:
+                ing_by_recipe[rid] = []
+            ing_by_recipe[rid].append(ing)
+
+        # Validate per day
+        days = {}
+        for m in meals:
+            d = m["day"]
+            if d not in days:
+                days[d] = {"meals": [], "issues": [], "cost": 0, "effort_summary": {}}
+
+            rid = m["recipe_id"]
+            effort = classify_effort(m["recipe_name"] or "", m["description"] or "")
+
+            meal_info = {
+                "section": m["section_name"],
+                "recipe": m["recipe_name"],
+                "effort": effort,
+                "effort_label": EFFORT_LABELS.get(effort, effort),
+                "cost": 0,
+                "expiry_issues": [],
+            }
+
+            # Check ingredients
+            for ing in ing_by_recipe.get(rid, []):
+                # Cost per serving (food items only, exclude seasonings loc=4)
+                if ing["location_id"] != 4 and ing["price"]:
+                    per_serving = round(ing["amount"] * ing["price"] / (ing["base_servings"] or 1))
+                    meal_info["cost"] += per_serving
+
+                # Expiry check
+                if ing["best_before_date"] and ing["best_before_date"] < d:
+                    meal_info["expiry_issues"].append({
+                        "product": ing["product_name"],
+                        "expiry": ing["best_before_date"],
+                        "use_date": d,
+                    })
+
+            days[d]["meals"].append(meal_info)
+            days[d]["cost"] += meal_info["cost"]
+
+            # Effort summary
+            eff = days[d]["effort_summary"]
+            eff[effort] = eff.get(effort, 0) + 1
+
+        # Build result with per-day issues
+        result = []
+        for d in sorted(days.keys()):
+            info = days[d]
+            issues = []
+
+            # Cost check
+            if info["cost"] > budget:
+                issues.append({
+                    "type": "cost",
+                    "severity": "warning",
+                    "message": f"予算超過: {info['cost']}円 (上限{budget}円)",
+                })
+
+            # Expiry issues
+            for m in info["meals"]:
+                for ei in m["expiry_issues"]:
+                    issues.append({
+                        "type": "expiry",
+                        "severity": "error",
+                        "message": f"期限切れ: {ei['product']} (期限{ei['expiry']}) を {ei['use_date']} に使用",
+                    })
+
+            # Effort check: count "cook" items
+            cook_count = info["effort_summary"].get("cook", 0)
+            if cook_count > 2:
+                issues.append({
+                    "type": "effort",
+                    "severity": "warning",
+                    "message": f"要調理が{cook_count}品あります",
+                })
+
+            result.append({
+                "day": d,
+                "cost": info["cost"],
+                "budget": budget,
+                "cost_ok": info["cost"] <= budget,
+                "effort": info["effort_summary"],
+                "effort_labels": {k: EFFORT_LABELS.get(k, k) for k in info["effort_summary"]},
+                "meals": info["meals"],
+                "issues": issues,
+                "has_errors": any(i["severity"] == "error" for i in issues),
+                "has_warnings": any(i["severity"] == "warning" for i in issues),
+            })
+
+        # Check unused expiring items
+        unused_expiring = query_db(GROCY_DB, """
+            SELECT p.id, p.name, sc.amount, s.best_before_date
+            FROM stock_current sc
+            JOIN products p ON p.id = sc.product_id
+            LEFT JOIN stock s ON s.product_id = p.id
+            WHERE p.location_id IN (2, 3)
+            AND s.best_before_date <= ?
+            AND s.best_before_date >= ?
+            AND p.id NOT IN (
+                SELECT DISTINCT rp.product_id FROM meal_plan mp
+                JOIN recipes_pos rp ON rp.recipe_id = mp.recipe_id
+                WHERE mp.day BETWEEN ? AND ?
+            )
+            GROUP BY p.id
+            ORDER BY s.best_before_date
+        """, (d_to, d_from, d_from, d_to))
+
+        self._json(200, {
+            "from": d_from,
+            "to": d_to,
+            "budget": budget,
+            "days": result,
+            "unused_expiring": unused_expiring,
+        })
+
     def _api_deals(self, qs):
         q = qs.get("q", [""])[0]
         category = qs.get("category", ["ALL"])[0]
@@ -294,7 +489,11 @@ class Handler(BaseHTTPRequestHandler):
                 "- 在庫の追加・削除・更新はツールを使って実際にDBを操作すること。\n"
                 "- 操作後は結果を簡潔に報告する（例: 「小松菜 1袋 200円で冷蔵庫に登録しました」）。\n"
                 "- 回答は簡潔に。3文以内を目標とする。\n"
-                "- マークダウンの装飾は使わず、プレーンテキストで返すこと。\n\n"
+                "- マークダウンの装飾は使わず、プレーンテキストで返すこと。\n"
+                "- ユーザーに選択を求める場合、質問文の最後に以下のJSON形式で選択肢を追加すること:\n"
+                "  [CHOICES:{\"choices\":[\"選択肢1\",\"選択肢2\",\"選択肢3\"]}]\n"
+                "  例: 冷蔵庫と冷凍庫、どちらに保存しますか？[CHOICES:{\"choices\":[\"冷蔵庫\",\"冷凍庫\"]}]\n"
+                "  例: 既存の献立を削除して作り直しますか？[CHOICES:{\"choices\":[\"作り直す\",\"追加だけ\",\"キャンセル\"]}]\n\n"
                 "【DB操作手順】\n"
                 "- 操作前: docker cp grocy:/config/data/grocy.db /tmp/grocy.db\n"
                 "- 操作後: docker cp /tmp/grocy.db grocy:/config/data/grocy.db\n"
@@ -313,31 +512,47 @@ class Handler(BaseHTTPRequestHandler):
                 full_prompt += f"[{role}]: {msg.get('text', '')}\n"
             full_prompt += f"[ユーザー]: {prompt}"
 
-            try:
-                result = subprocess.run(
-                    [
-                        "claude", "-p",
-                        "--system-prompt", system,
-                        "--allowedTools", "Bash(docker cp *),Bash(sqlite3 *),Bash(curl *),Read,Grep,Glob",
-                    ],
-                    input=full_prompt,
-                    capture_output=True, text=True, timeout=120,
-                    cwd=WORK_DIR
-                )
-                response = result.stdout.strip() or result.stderr.strip() or "応答がありませんでした。"
-                self._json(200, {"response": response})
-            except subprocess.TimeoutExpired:
-                self._json(504, {"error": "Claude Code がタイムアウトしました。"})
-            except FileNotFoundError:
-                self._json(500, {"error": "claude コマンドが見つかりません。"})
-            except Exception as e:
-                self._json(500, {"error": str(e)})
+            task_id = str(uuid.uuid4())
+            _ai_tasks[task_id] = {"running": True, "result": None, "choices": None}
+
+            def run_ai():
+                try:
+                    result = subprocess.run(
+                        [
+                            "claude", "-p",
+                            "--system-prompt", system,
+                            "--allowedTools", "Bash(docker cp *),Bash(sqlite3 *),Bash(curl *),Read,Grep,Glob",
+                        ],
+                        input=full_prompt,
+                        capture_output=True, text=True, timeout=600,
+                        cwd=WORK_DIR
+                    )
+                    response = result.stdout.strip() or result.stderr.strip() or "応答がありませんでした。"
+                    choices = None
+                    choice_match = re.search(r'\[CHOICES:(\{.*?\})\]', response)
+                    if choice_match:
+                        try:
+                            choices = json.loads(choice_match.group(1)).get("choices", [])
+                        except: pass
+                        response = response[:choice_match.start()].strip()
+                    _ai_tasks[task_id]["result"] = response
+                    _ai_tasks[task_id]["choices"] = choices
+                except subprocess.TimeoutExpired:
+                    _ai_tasks[task_id]["result"] = "タイムアウトしました（10分）。もう少し具体的に指示してみてください。"
+                except FileNotFoundError:
+                    _ai_tasks[task_id]["result"] = "claude コマンドが見つかりません。"
+                except Exception as e:
+                    _ai_tasks[task_id]["result"] = str(e)
+                finally:
+                    _ai_tasks[task_id]["running"] = False
+
+            threading.Thread(target=run_ai, daemon=True).start()
+            self._json(202, {"task_id": task_id})
         elif self.path == "/api/recipe-plan":
             length = int(self.headers.get("Content-Length", 0))
             body = json.loads(self.rfile.read(length)) if length else {}
             week = body.get("week", "今週月〜日")
             # Run in background thread
-            import threading
             def run_plan():
                 _recipe_plan_status["running"] = True
                 _recipe_plan_status["result"] = None

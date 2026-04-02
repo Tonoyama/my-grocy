@@ -40,9 +40,29 @@ Grocyベースの食材管理・レシピ計画システム。Docker Compose で
 - 注文: 16時以降、翌日配達
 - コスパ比較は `price_per_edible_kg`（可食部あたりkg単価）で行う
 
+## 健康データ連携
+
+### あすけん（栄養管理）
+- 認証: `.env` の `ASKEN_EMAIL`, `ASKEN_PASSWORD`
+- スクリプト: `asken-fetch.py`（データ取得）, `asken-record.py`（食事登録）
+- 要件: `pip3 install playwright && python3 -m playwright install chromium`
+
+### Health Planet（体重・体脂肪率 / TANITA）
+- 認証: `.env` の `HP_CLIENT_ID`, `HP_CLIENT_SECRET`, `HP_USER`, `HP_PASSWORD`
+- スクリプト: `healthplanet-fetch.py`
+- OAuthトークンキャッシュ: `.healthplanet_token.json`（30日有効）
+
+### 近隣スーパー特売（トクバイ）
+- チラシは画像形式 → DL後にReadツールで画像認識
+- 店舗ID: ジャパンミート(266712), コモディイイダ(7515), マミーマート(3639), ビッグ・エー(70801), フードガーデン(2605)
+
 ## Agent Skills (Slash Commands)
 - `/recipe-plan`: 週間レシピ作成（一汁三菜・作り置き）
 - `/stock-add`: 発注メール等から在庫追加
 - `/stock-check`: 在庫一覧表示
 - `/stock-update`: 在庫情報の更新
 - `/stock-procurement`: 八面六臂から仕入れ調査（予算・栄養バランス考慮）
+- `/nutrition-deals`: 栄養補強＋特売比較（八面六臂 vs 近隣スーパー）
+- `/asken-sync`: Grocy献立→あすけん食事記録同期
+- `/health-check`: 体重・体脂肪率・栄養評価の確認
+- `/today-menu`: 今日の献立ガイド

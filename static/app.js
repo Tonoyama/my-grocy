@@ -21,7 +21,10 @@ function formatDate(d) {
 function addDays(d, n) {
   const dt = new Date(d + 'T00:00:00');
   dt.setDate(dt.getDate() + n);
-  return dt.toISOString().split('T')[0];
+  const y = dt.getFullYear();
+  const m = String(dt.getMonth() + 1).padStart(2, '0');
+  const day = String(dt.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
 }
 function escHtml(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
 
@@ -202,14 +205,41 @@ App.home = {
           history: this.chatHistory.slice(-10)  // 直近10件を送信
         })
       });
-      const data = await resp.json();
-      const answer = data.response || data.error || '応答なし';
-      this.chatHistory.push({ role: 'ai', text: answer });
-      $(thinkingId).innerHTML = `<b>🤖 AI:</b> ${escHtml(answer).replace(/\n/g, '<br>')}`;
+      const initData = await resp.json();
+      const taskId = initData.task_id;
+      if (!taskId) {
+        $(thinkingId).innerHTML = `<b>🤖 AI:</b> ${escHtml(initData.error || '応答なし')}`;
+        $('chat-send-btn').disabled = false;
+        return;
+      }
+      // Poll for result
+      const poll = setInterval(async () => {
+        try {
+          const sr = await fetch('/api/ai/status?id=' + taskId);
+          const st = await sr.json();
+          if (!st.running) {
+            clearInterval(poll);
+            const answer = st.result || '応答なし';
+            const choices = st.choices || [];
+            this.chatHistory.push({ role: 'ai', text: answer });
+            let choicesHtml = '';
+            if (choices.length) {
+              choicesHtml = '<div class="chat-quick" style="margin-top:8px">';
+              choices.forEach(c => {
+                choicesHtml += `<button onclick="App.home.quick('${escHtml(c)}')">${escHtml(c)}</button>`;
+              });
+              choicesHtml += '</div>';
+            }
+            $(thinkingId).innerHTML = `<b>🤖 AI:</b> ${escHtml(answer).replace(/\n/g, '<br>')}${choicesHtml}`;
+            $('chat-send-btn').disabled = false;
+            messages.scrollTop = messages.scrollHeight;
+          }
+        } catch(e) { /* keep polling */ }
+      }, 3000);
     } catch(e) {
       $(thinkingId).innerHTML = '<b>🤖 AI:</b> <span style="color:var(--accent)">サーバーに接続できません</span>';
+      $('chat-send-btn').disabled = false;
     }
-    $('chat-send-btn').disabled = false;
     messages.scrollTop = messages.scrollHeight;
   },
 
@@ -440,16 +470,55 @@ App.mealplan = {
     $('mealplan-week').textContent = formatDate(from) + ' 〜 ' + formatDate(to);
     $('mealplan-content').innerHTML = '<div class="loading">読み込み中...</div>';
 
-    const data = await api(`/api/mealplan?from=${from}&to=${to}`);
+    const [data, validation] = await Promise.all([
+      api(`/api/mealplan?from=${from}&to=${to}`),
+      api(`/api/mealplan/validate?from=${from}&to=${to}`).catch(() => null),
+    ]);
+
+    // Build validation lookup
+    const vByDay = {};
+    if (validation && validation.days) {
+      validation.days.forEach(v => { vByDay[v.day] = v; });
+    }
+
     let html = '';
+
+    // Unused expiring items warning
+    if (validation && validation.unused_expiring && validation.unused_expiring.length) {
+      html += '<div class="validate-banner validate-error">';
+      html += '<b>献立未使用で期限が近い食材:</b><br>';
+      validation.unused_expiring.forEach(u => {
+        html += `${escHtml(u.name)} (${u.amount}) 期限${u.best_before_date}<br>`;
+      });
+      html += '</div>';
+    }
 
     for (let i = 0; i < 7; i++) {
       const d = addDays(from, i);
       const meals = data[d] || [];
       const isToday = d === today();
+      const v = vByDay[d];
 
-      html += `<div class="day-card card" style="${isToday ? 'border:1px solid var(--accent)' : ''}">`;
-      html += `<h3>${isToday ? '📌 ' : ''}${formatDate(d)}</h3>`;
+      let border = isToday ? 'border:1px solid var(--accent)' : '';
+      if (v && v.has_errors) border = 'border:2px solid #e74c3c';
+      else if (v && v.has_warnings) border = 'border:2px solid #f39c12';
+
+      html += `<div class="day-card card" style="${border}">`;
+      html += `<h3>${isToday ? '📌 ' : ''}${formatDate(d)}`;
+
+      // Validation badges
+      if (v) {
+        if (v.cost_ok) html += ` <span class="badge badge-ok">${v.cost}円</span>`;
+        else html += ` <span class="badge badge-warn">${v.cost}円 超過</span>`;
+
+        // Effort summary
+        const eff = v.effort || {};
+        const cookN = eff.cook || 0;
+        if (cookN === 0) html += ' <span class="badge badge-ok">調理なし</span>';
+        else if (cookN <= 2) html += ` <span class="badge badge-ok">調理${cookN}品</span>`;
+        else html += ` <span class="badge badge-warn">調理${cookN}品</span>`;
+      }
+      html += '</h3>';
 
       if (!meals.length) {
         html += '<div style="color:var(--text-dim);padding:4px 0">献立なし</div>';
@@ -457,9 +526,29 @@ App.mealplan = {
         let cur = '';
         meals.forEach(m => {
           if (m.section_name !== cur) { cur = m.section_name; html += `<div class="meal-label">${escHtml(cur)}</div>`; }
-          html += `<a class="recipe-link" onclick="App.mealplan.openCooking('${d}')">${escHtml(m.recipe_name)}</a>`;
+          // Find effort label for this recipe from validation
+          let effortTag = '';
+          if (v) {
+            const vm = v.meals.find(vm => vm.recipe === m.recipe_name);
+            if (vm) {
+              const cls = vm.effort === 'cook' ? 'badge-cook' : (vm.effort === 'zero' || vm.effort === 'reheat') ? 'badge-easy' : 'badge-mid';
+              effortTag = ` <span class="effort-tag ${cls}">${escHtml(vm.effort_label)}</span>`;
+            }
+          }
+          html += `<a class="recipe-link" onclick="App.mealplan.openCooking('${d}')">${escHtml(m.recipe_name)}${effortTag}</a>`;
         });
       }
+
+      // Show issues
+      if (v && v.issues.length) {
+        html += '<div class="validate-issues">';
+        v.issues.forEach(issue => {
+          const cls = issue.severity === 'error' ? 'issue-error' : 'issue-warn';
+          html += `<div class="${cls}">${escHtml(issue.message)}</div>`;
+        });
+        html += '</div>';
+      }
+
       html += '</div>';
     }
     $('mealplan-content').innerHTML = html;
@@ -649,26 +738,47 @@ App.voice = {
       }
     }
 
-    try {
-      const resp = await fetch('/ai', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt, context }) });
-      const data = await resp.json();
-      sndProcStop(); sndComplete();
-      const answer = data.response || data.error || '応答なし';
-      $('aiText').textContent = answer;
-      $('aiResponse').style.display = 'block';
-      $('voiceStatus').textContent = '🤖 AI応答完了';
-      speak(answer.substring(0, 500));
-    } catch(e) {
-      sndProcStop();
-      $('voiceStatus').textContent = '⚠ AIサーバーに接続できません';
-      speak('AIサーバーに接続できませんでした。');
-    } finally {
+    const resumeListening = () => {
       btn.classList.remove('processing');
       if (isListening) {
         btn.classList.add('listening');
         btn.textContent = '🟢 音声認識中...';
         setTimeout(() => { if (isListening && !speechSynthesis.speaking) { try { recognition.stop(); } catch(e) {} setTimeout(() => { try { recognition.start(); } catch(e) {} $('voiceStatus').textContent = '🎤 「コンピュータ」と呼んでください'; }, 300); } }, 500);
       }
+    };
+
+    try {
+      const resp = await fetch('/ai', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt, context }) });
+      const initData = await resp.json();
+      const taskId = initData.task_id;
+      if (!taskId) {
+        sndProcStop();
+        $('voiceStatus').textContent = '⚠ ' + (initData.error || '応答なし');
+        resumeListening();
+        return;
+      }
+      // Poll for result
+      const poll = setInterval(async () => {
+        try {
+          const sr = await fetch('/api/ai/status?id=' + taskId);
+          const st = await sr.json();
+          if (!st.running) {
+            clearInterval(poll);
+            sndProcStop(); sndComplete();
+            const answer = st.result || '応答なし';
+            $('aiText').textContent = answer;
+            $('aiResponse').style.display = 'block';
+            $('voiceStatus').textContent = '🤖 AI応答完了';
+            speak(answer.substring(0, 500));
+            resumeListening();
+          }
+        } catch(e) { /* keep polling */ }
+      }, 3000);
+    } catch(e) {
+      sndProcStop();
+      $('voiceStatus').textContent = '⚠ AIサーバーに接続できません';
+      speak('AIサーバーに接続できませんでした。');
+      resumeListening();
     }
   }
 };

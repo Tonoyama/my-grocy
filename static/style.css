@@ -100,6 +100,20 @@ section.active { display: block; }
 }
 .day-card .recipe-link:hover { color: var(--accent); }
 
+/* ── Validation Badges ── */
+.badge { font-size: 0.7rem; padding: 2px 6px; border-radius: 4px; margin-left: 4px; vertical-align: middle; }
+.badge-ok { background: #27ae6033; color: #27ae60; }
+.badge-warn { background: #f39c1233; color: #f39c12; }
+.effort-tag { font-size: 0.65rem; padding: 1px 4px; border-radius: 3px; margin-left: 4px; }
+.badge-easy { background: #27ae6022; color: #2ecc71; }
+.badge-mid { background: #3498db22; color: #3498db; }
+.badge-cook { background: #e74c3c22; color: #e74c3c; }
+.validate-banner { padding: 8px 12px; border-radius: 8px; margin-bottom: 12px; font-size: 0.85rem; line-height: 1.5; }
+.validate-error { background: #e74c3c22; border: 1px solid #e74c3c44; color: #e74c3c; }
+.validate-issues { padding: 4px 0; font-size: 0.8rem; }
+.issue-error { color: #e74c3c; padding: 2px 0; }
+.issue-warn { color: #f39c12; padding: 2px 0; }
+
 /* ── Cooking Guide ── */
 .recipe-group { margin-bottom: 20px; }
 .recipe-group h3 {
