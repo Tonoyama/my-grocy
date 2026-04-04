@@ -50,7 +50,7 @@ def run(dry=False):
 
     # Determine which sections to consume:
     # section 1 (昼食) at 12:00 → consume if hour >= 14 (after lunch)
-    # section 2 (夕食) at 19:00 → consume if hour >= 21 (after dinner)
+    # section 2 (夕食) at 19:00 → consume if hour >= 23 (after dinner)
     # Past days: consume all sections
     meals = conn.execute("""
         SELECT mp.day, mp.section_id, mp.recipe_id, r.name as recipe_name
@@ -79,7 +79,7 @@ def run(dry=False):
             if section == 1 and now_hour < 14:
                 skipped.append(f"  SKIP (昼食まだ): {day} {meal['recipe_name']}")
                 continue
-            if section == 2 and now_hour < 21:
+            if section == 2 and now_hour < 23:
                 skipped.append(f"  SKIP (夕食まだ): {day} {meal['recipe_name']}")
                 continue
 

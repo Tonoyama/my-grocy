@@ -56,6 +56,17 @@ Grocyベースの食材管理・レシピ計画システム。Docker Compose で
 - チラシは画像形式 → DL後にReadツールで画像認識
 - 店舗ID: ジャパンミート(266712), コモディイイダ(7515), マミーマート(3639), ビッグ・エー(70801), フードガーデン(2605)
 
+### マネーフォワードME（家計管理）
+- 認証: Playwright永続プロファイル `~/.mf_chrome_profile`（headful必須）
+- 初回は手動でGoogleログイン+2FA。以降はセッション維持
+- SMBC 70,000円 と 定額自動入金 70,000円 は振替（収支に含めない）
+- 家賃: ジャックス 88,880円/月
+- Amazon.co.jpは全て「教養・教育>書籍」に誤分類される → `/amazon-check` で正確な分類を確認
+
+### Amazon.co.jp（注文履歴）
+- 認証: マネーフォワードと同じ永続プロファイル
+- 注文履歴URL: `https://www.amazon.co.jp/your-orders/orders?orderFilter=months-3`
+
 ## Agent Skills (Slash Commands)
 - `/recipe-plan`: 週間レシピ作成（一汁三菜・作り置き）
 - `/stock-add`: 発注メール等から在庫追加
@@ -66,3 +77,5 @@ Grocyベースの食材管理・レシピ計画システム。Docker Compose で
 - `/asken-sync`: Grocy献立→あすけん食事記録同期
 - `/health-check`: 体重・体脂肪率・栄養評価の確認
 - `/today-menu`: 今日の献立ガイド
+- `/money-check`: マネーフォワード家計確認（収支・口座残高・支出内訳）
+- `/amazon-check`: Amazon注文分析（カテゴリ分類・マネフォ誤分類特定）

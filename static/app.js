@@ -309,8 +309,25 @@ App.cooking = {
     let html = '';
     let stepIdx = 0;
     this.steps = [];
+    let currentSection = '';
+    let sectionIdx = 0;
+    const now = new Date();
+    const hour = now.getHours();
+    const isToday = this.date === today();
+    // section times: 昼食=14時以降は過ぎた, 夕食=21時以降は過ぎた
+    const sectionPast = {'昼食': isToday && hour >= 14, '夕食': isToday && hour >= 21};
 
     recipes.forEach(r => {
+      const section = r.section || '';
+      if (section && section !== currentSection) {
+        if (currentSection) html += '</div>'; // close previous section wrapper
+        currentSection = section;
+        const past = sectionPast[section] || false;
+        const sid = 'section-' + sectionIdx++;
+        const arrow = past ? '▶' : '▼';
+        html += `<div style="margin:16px 0 8px;padding:8px 12px;background:var(--card);border-left:4px solid var(--accent);font-weight:bold;font-size:1.1rem;cursor:pointer" onclick="var w=document.getElementById('${sid}');var a=this.querySelector('.sarrow');if(w.style.display==='none'){w.style.display='';a.textContent='▼'}else{w.style.display='none';a.textContent='▶'}"><span class="sarrow">${arrow}</span> ${escHtml(section)}</div>`;
+        html += `<div id="${sid}" style="${past ? 'display:none' : ''}">`;
+      }
       html += `<div class="recipe-group"><h3>${escHtml(r.recipe_name)}`;
       if (r.servings) html += ` <span style="font-size:0.8rem;color:var(--text-dim)">【${r.servings}人前】</span>`;
       html += '</h3>';
@@ -331,16 +348,30 @@ App.cooking = {
           timerHtml = ` <button class="timer-btn" data-seconds="${s.timer_seconds}" data-step="${stepIdx}" onclick="App.cooking.startTimer(this)">${label}タイマー</button><span class="timer-display" id="td${stepIdx}"></span>`;
         }
         html += `<div class="step" data-idx="${stepIdx}"><input type="checkbox" id="${id}" onchange="App.cooking.toggle(${stepIdx})"><label for="${id}">${escHtml(s.text)}${timerHtml}</label></div>`;
-        this.steps.push(s);
+        this.steps.push({...s, section: currentSection, sectionPast: sectionPast[currentSection] || false});
         stepIdx++;
       });
       html += '</div>';
     });
+    if (currentSection) html += '</div>'; // close last section wrapper
 
     $('cooking-content').innerHTML = html;
+    // Skip past sections that are already done (e.g. lunch after 14:00)
     this.currentIndex = 0;
+    for (let i = 0; i < this.steps.length; i++) {
+      if (!this.steps[i].sectionPast) { this.currentIndex = i; break; }
+      this.currentIndex = i + 1;
+    }
     this._restoreProgress();
     this._updateProgress();
+  },
+
+  toggleSection(name) {
+    const headers = document.querySelectorAll('#cooking-content [onclick*="section-"]');
+    for (const h of headers) {
+      if (h.textContent.includes(name)) { h.click(); speak(name + 'を切り替えました'); return; }
+    }
+    speak(name + 'のセクションが見つかりません');
   },
 
   toggle(idx) {
@@ -713,6 +744,8 @@ App.voice = {
     else if (c.includes('読んで') || c.includes('よんで') || c.includes('リピート')) { App.cooking.readCurrent(); }
     else if (c.includes('タイマー') || c.includes('スタート') || c.includes('計って') || c.includes('はかって') || c.includes('測って') || c.includes('時間')) { App.cooking.startCurrentTimer(); }
     else if (c.includes('戻') || c.includes('もどる') || c.includes('前')) { App.cooking.prev(); }
+    else if (c.includes('昼食') || c.includes('ランチ') || c.includes('ひるごはん')) { App.cooking.toggleSection('昼食'); }
+    else if (c.includes('夕食') || c.includes('ディナー') || c.includes('ばんごはん') || c.includes('晩ごはん') || c.includes('よるごはん')) { App.cooking.toggleSection('夕食'); }
     else if (c.includes('ストップ') || c.includes('止めて')) { App.voice.toggle(); }
     else { this._askAI(cmd); }
   },
